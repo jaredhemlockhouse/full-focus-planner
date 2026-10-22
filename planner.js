@@ -1,5 +1,5 @@
 import { db, configured, setupScreen } from "./firebase.js";
-import { ymd, parseYmd, addDays, weekStart, qOf, K, fmt, sameDay, weekLabel, qLabel, esc, DAYS, glanceDays } from "./common.js";
+import { ymd, parseYmd, addDays, weekStart, qOf, K, fmt, sameDay, weekLabel, qLabel, esc, DAYS, glanceDays } from "./common.js?v=3";
 import { collection, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const S = { uid: null, key: null, cache: {}, board: {}, dirty: new Set(), timers: {}, tab: "today", date: new Date(), armed: null, pendingRender: false, unsubs: [] };
