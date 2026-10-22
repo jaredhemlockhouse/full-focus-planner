@@ -25,6 +25,9 @@ const SELFCARE = [["sleep", "Sleep"], ["eat", "Eat"], ["move", "Move"], ["connec
 const IW_ROWS = [["early", "Early AM"], ["am", "Morning"], ["pm", "Afternoon"], ["eve", "Evening"]];
 const STAGES = ["", "front", "back", "off"]; const STAGE_LABEL = { "": "Set stage", front: "Front stage", back: "Back stage", off: "Off stage" };
 
+// Full Focus Planner task marks: ✓ completed, / action taken (waiting), ○ delegated, → deferred, ✕ deleted.
+const STATUS = [["", "Open", ""], ["done", "Completed", "✓"], ["wait", "Action taken, waiting on someone", "/"], ["deleg", "Delegated", "○"], ["defer", "Deferred to another day", "→"], ["del", "Deleted (no longer needed)", "✕"]];
+const stOf = it => (it && it.s) || (it && it.done ? "done" : "");
 const blank3 = () => [0, 1, 2].map(() => ({ t: "", done: false, priv: false }));
 function defaultFor(k) {
   if (k.startsWith("d-")) return { big3: blank3(), tasks: [], sched: {}, notes: "", rit: {} };
@@ -46,25 +49,35 @@ function edit(k, fn) {
   setStatus("Saving…");
 }
 function project(k, d) {
-  if (k.startsWith("d-") || k.startsWith("w-")) return { big3: (d.big3 || []).filter(x => x.t && x.t.trim() && !x.priv).map(x => ({ t: x.t.trim(), done: !!x.done })) };
+  if (k.startsWith("d-") || k.startsWith("w-")) {
+    const big3 = (d.big3 || []).filter(x => x.t && x.t.trim() && !x.priv).map(x => {
+      const o = { t: x.t.trim(), s: stOf(x), done: stOf(x) === "done" };
+      if (o.s === "deleg" && x.who && x.who.trim()) o.who = x.who.trim();
+      return o;
+    });
+    if (k.startsWith("w-")) return { big3 };
+    const sched = Object.entries(d.sched || {}).filter(([h, t]) => t && String(t).trim()).map(([h, t]) => ({ h: Number(h), t: String(t).trim() })).sort((a, b) => a.h - b.h);
+    return { big3, sched };
+  }
   if (k.startsWith("q-")) return { goals: (d.goals || []).filter(g => g.title && g.title.trim() && !g.priv).map(g => ({ title: g.title.trim(), type: g.type || "achievement", due: g.due || "", progress: Number(g.progress) || 0 })) };
   return null;
+}
+// Dashboard copy: Big 3s (with status), the day's schedule and goal progress. Never private items.
+function boardWrite(k, data) {
+  const p = project(k, data); if (!p) return null;
+  const cur = S.board[k]; const curP = cur ? (({ updated, ...r }) => r)(cur) : null;
+  const empty = p.goals ? !p.goals.length : (!p.big3.length && !(p.sched || []).length);
+  if (empty && !cur) return null;
+  if (JSON.stringify(curP) === JSON.stringify(p)) return null;
+  const body = { ...p, updated: new Date().toISOString() };
+  S.board[k] = body;
+  return setDoc(doc(db, "board", k), body);
 }
 function flush(k) {
   S.dirty.delete(k);
   const data = clone(S.cache[k]);
   const writes = [setDoc(doc(db, "p", S.key, "planner", k), data)];
-  // Owner-facing copy: only Big 3s and goal progress, never private items.
-  const p = project(k, data);
-  if (p) {
-    const cur = S.board[k]; const curP = cur ? (({ updated, ...r }) => r)(cur) : null;
-    const empty = (p.big3 && !p.big3.length) || (p.goals && !p.goals.length);
-    if (!(empty && !cur) && JSON.stringify(curP) !== JSON.stringify(p)) {
-      const body = { ...p, updated: new Date().toISOString() };
-      S.board[k] = body;
-      writes.push(setDoc(doc(db, "board", k), body));
-    }
-  }
+  const w = boardWrite(k, data); if (w) writes.push(w);
   if (!navigator.onLine) setStatus("Saved on this device · syncs when online");
   Promise.all(writes).then(() => {
     if (!S.dirty.size) setStatus("Saved " + new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
@@ -76,20 +89,31 @@ window.addEventListener("online", () => setStatus("Back online · syncing"));
 window.addEventListener("offline", () => setStatus("Offline · edits save on this device"));
 
 /* ---------- views ---------- */
+function txt(k, path, val, ph, cls = "txt") {
+  return `<textarea class="${cls}" rows="1" placeholder="${esc(ph)}" data-doc="${k}" data-path="${path}">${esc(val)}</textarea>`;
+}
+function grow(el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+function growAll() { main.querySelectorAll("textarea.txt, textarea.gt").forEach(grow); }
+window.addEventListener("resize", () => growAll());
+function statusBtn(k, path, it, label) {
+  const s = stOf(it), m = STATUS.find(x => x[0] === s) || STATUS[0];
+  return `<button class="st st-${s || "open"}" data-act="stmenu" data-doc="${k}" data-path="${path}" title="${m[1]}" aria-label="${esc(label)}: ${m[1]}. Change status">${m[2]}</button>`;
+}
+function taskCell(k, path, it, ph) {
+  return `<div class="cell">${txt(k, path + ".t", it.t, ph)}${stOf(it) === "deleg" ? txt(k, path + ".who", it.who, "Delegated to…", "txt who") : ""}${it.from ? `<span class="from">Deferred from ${fmt(parseYmd(it.from), { weekday: "short", month: "short", day: "numeric" })}</span>` : ""}</div>`;
+}
 function bigRow(k, path, item, i) {
-  return `<div class="line big ${item.done ? "done" : ""}">
+  return `<div class="line big st-row-${stOf(item) || "open"}">
     <span class="num">${i + 1}</span>
-    <input class="chk" type="checkbox" aria-label="Mark Big 3 item ${i + 1} done" data-doc="${k}" data-path="${path}.${i}.done" data-rr ${item.done ? "checked" : ""}>
-    <input type="text" placeholder="${i === 0 ? "Most important outcome" : "Big 3 item " + (i + 1)}" value="${esc(item.t)}" data-doc="${k}" data-path="${path}.${i}.t">
+    ${statusBtn(k, `${path}.${i}`, item, `Big 3 item ${i + 1}`)}
+    ${taskCell(k, `${path}.${i}`, item, i === 0 ? "Most important outcome" : "Big 3 item " + (i + 1))}
     <button class="lock ${item.priv ? "on" : ""}" data-act="toggle" data-doc="${k}" data-path="${path}.${i}.priv" title="${item.priv ? "Hidden from owners. Click to share." : "Visible to owners. Click to hide."}">${item.priv ? "Private" : "Shared"}</button>
   </div>`;
 }
 function listRows(k, path, arr, { check = false, ph = "Add an item" } = {}) {
   const rows = arr.map((it, i) => {
-    const t = check ? it.t : it, done = check && it.done;
-    return `<div class="line ${done ? "done" : ""}">
-      ${check ? `<input class="chk" type="checkbox" aria-label="Done" data-doc="${k}" data-path="${path}.${i}.done" data-rr ${done ? "checked" : ""}>` : ""}
-      <input type="text" placeholder="${esc(ph)}" value="${esc(t)}" data-doc="${k}" data-path="${path}.${i}${check ? ".t" : ""}">
+    return `<div class="line ${check ? "st-row-" + (stOf(it) || "open") : ""}">
+      ${check ? statusBtn(k, `${path}.${i}`, it, "Task") + taskCell(k, `${path}.${i}`, it, ph) : `<div class="cell">${txt(k, `${path}.${i}`, it, ph)}</div>`}
       <button class="x" aria-label="Remove" data-act="del" data-doc="${k}" data-path="${path}" data-i="${i}">×</button>
     </div>`;
   }).join("");
@@ -127,7 +151,7 @@ function viewToday() {
         <div><h2>Notes</h2><textarea rows="6" placeholder="Ideas, calls, follow-ups…" data-doc="${k}" data-path="notes">${esc(day.notes)}</textarea></div>
       </div>
       <div class="stack sched"><div><h2>Schedule</h2>
-        ${hours.map(h => `<div class="line"><span class="time">${hourLabel(h)}</span><input type="text" aria-label="${hourLabel(h)}" value="${esc((day.sched || {})[h])}" data-doc="${k}" data-path="sched.${h}"></div>`).join("")}
+        ${hours.map(h => `<div class="line"><span class="time">${hourLabel(h)}</span><div class="cell">${txt(k, `sched.${h}`, (day.sched || {})[h], "")}</div></div>`).join("")}
       </div></div>
     </div>
   </section>`;
@@ -182,7 +206,7 @@ function viewQuarter() {
     </div>
     <p class="hint" style="margin:0 0 16px">Up to seven SMARTER goals. Each has key motivations and one next step. Goal names and progress are shared with owners unless marked Private.</p>
     ${goals.length ? `<div class="goals">${goals.map((g, i) => `<div class="goal">
-      <input class="gt" type="text" placeholder="Goal, written as a finished result" value="${esc(g.title)}" data-doc="${k}" data-path="goals.${i}.title">
+      ${txt(k, `goals.${i}.title`, g.title, "Goal, written as a finished result", "gt")}
       <div class="meta">
         <select aria-label="Goal type" data-doc="${k}" data-path="goals.${i}.type"><option value="achievement" ${g.type !== "habit" ? "selected" : ""}>Achievement</option><option value="habit" ${g.type === "habit" ? "selected" : ""}>Habit</option></select>
         <span>Due</span><input type="date" aria-label="Due date" value="${esc(g.due)}" data-doc="${k}" data-path="goals.${i}.due">
@@ -190,9 +214,9 @@ function viewQuarter() {
       </div>
       <div class="prog"><input type="range" min="0" max="100" step="5" value="${g.progress || 0}" aria-label="Progress" data-doc="${k}" data-path="goals.${i}.progress" data-pctid="${k}-${i}"><span class="pct" data-pct="${k}-${i}">${g.progress || 0}%</span></div>
       <div class="mini">Key motivations</div>
-      ${[0, 1, 2].map(j => `<div class="line"><span class="time" style="width:14px">${j + 1}</span><input type="text" placeholder="Why this matters" value="${esc((g.why || [])[j])}" data-doc="${k}" data-path="goals.${i}.why.${j}"></div>`).join("")}
+      ${[0, 1, 2].map(j => `<div class="line"><span class="time" style="width:14px">${j + 1}</span><div class="cell">${txt(k, `goals.${i}.why.${j}`, (g.why || [])[j], "Why this matters")}</div></div>`).join("")}
       <div class="mini">Next step</div>
-      <div class="line"><input type="text" placeholder="The very next action" value="${esc(g.next)}" data-doc="${k}" data-path="goals.${i}.next"></div>
+      <div class="line"><div class="cell">${txt(k, `goals.${i}.next`, g.next, "The very next action")}</div></div>
       <div class="foot"><button class="btn ghost ${S.armed === g.id ? "danger" : ""}" data-act="delgoal" data-doc="${k}" data-id="${g.id}">${S.armed === g.id ? "Click again to remove" : "Remove goal"}</button></div>
     </div>`).join("")}</div>` : `<div class="empty">No goals for ${ql.name} yet. Add your first one to start tracking progress.</div>`}
     <div style="margin-top:16px"><button class="btn primary" data-act="addgoal" data-doc="${k}" ${goals.length >= 7 ? "disabled" : ""}>${goals.length >= 7 ? "Seven goals is the limit" : "+ Add goal"}</button></div>
@@ -220,6 +244,7 @@ function render() {
   if (!S.uid) return;
   $("#tabs").querySelectorAll("button").forEach(b => b.setAttribute("aria-current", String(b.dataset.tab === S.tab)));
   main.innerHTML = ({ today: viewToday, week: viewWeek, quarter: viewQuarter, rituals: viewRituals }[S.tab] || viewToday)();
+  growAll();
 }
 function isEditing() { const a = document.activeElement; return a && main.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox"; }
 function softRender() { if (isEditing()) S.pendingRender = true; else render(); }
@@ -235,7 +260,46 @@ main.addEventListener("input", e => {
   const v = el.type === "range" ? Number(el.value) : el.value;
   edit(el.dataset.doc, d => setPath(d, el.dataset.path, v));
   if (el.dataset.pctid) document.querySelectorAll(`[data-pct="${el.dataset.pctid}"]`).forEach(n => n.textContent = v + "%");
+  if (el.tagName === "TEXTAREA" && (el.classList.contains("txt") || el.classList.contains("gt"))) grow(el);
 });
+
+/* ---------- task status menu ---------- */
+const menu = document.createElement("div");
+menu.className = "stmenu"; menu.hidden = true; menu.setAttribute("role", "menu");
+document.body.appendChild(menu);
+let menuFor = null;
+function closeMenu() { menu.hidden = true; menuFor = null; }
+function openMenu(btn) {
+  menuFor = { k: btn.dataset.doc, path: btn.dataset.path, btn };
+  const cur = stOf(getPath(get(menuFor.k), menuFor.path));
+  menu.innerHTML = STATUS.map(([id, label, sym]) => `<button role="menuitemradio" aria-checked="${id === cur}" data-s="${id}"><span class="st st-${id || "open"}">${sym}</span><span>${label}${id === "defer" && menuFor.k.startsWith("d-") ? "<small>Also copies it to the next day's tasks</small>" : ""}</span></button>`).join("");
+  menu.hidden = false;
+  const r = btn.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
+  let left = r.left + window.scrollX, top = r.bottom + window.scrollY + 6;
+  left = Math.max(8 + window.scrollX, Math.min(left, window.scrollX + document.documentElement.clientWidth - mw - 8));
+  if (r.bottom + mh + 12 > window.innerHeight && r.top > mh + 12) top = r.top + window.scrollY - mh - 6;
+  menu.style.left = left + "px"; menu.style.top = top + "px";
+  menu.querySelector('[aria-checked="true"]')?.focus();
+}
+function setTaskStatus(k, path, st) {
+  let item = null;
+  edit(k, d => { item = getPath(d, path); if (!item) return; item.s = st; item.done = st === "done"; });
+  // Deferred daily items are rewritten on the next day, like the paper planner's arrow.
+  if (st === "defer" && item && k.startsWith("d-") && item.t && item.t.trim()) {
+    const day = k.slice(2), next = K.day(addDays(parseYmd(day), 1));
+    let added = false;
+    edit(next, d => { d.tasks = d.tasks || []; if (!d.tasks.some(x => x.t === item.t)) { d.tasks.push({ t: item.t, s: "", done: false, from: day }); added = true; } });
+    if (added) setTimeout(() => setStatus("Copied to " + fmt(addDays(parseYmd(day), 1), { weekday: "long" }) + "'s tasks"), 700);
+  }
+  render();
+}
+menu.addEventListener("click", e => {
+  const b = e.target.closest("[data-s]"); if (!b || !menuFor) return;
+  const { k, path } = menuFor; closeMenu(); setTaskStatus(k, path, b.dataset.s);
+});
+document.addEventListener("click", e => { if (!menu.hidden && !menu.contains(e.target) && !e.target.closest('[data-act="stmenu"]')) closeMenu(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !menu.hidden) { const b = menuFor && menuFor.btn; closeMenu(); b && b.focus(); } });
+window.addEventListener("resize", () => { if (!menu.hidden) closeMenu(); });
 main.addEventListener("change", e => {
   const el = e.target;
   if (el.dataset.act === "jump" && el.value) { S.date = parseYmd(el.value); render(); return; }
@@ -254,11 +318,12 @@ main.addEventListener("click", e => {
     case "shiftq": S.date = new Date(S.date.getFullYear(), S.date.getMonth() + 3 * Number(b.dataset.n), 1); break;
     case "today": S.date = new Date(); break;
     case "openday": S.date = parseYmd(b.dataset.d); S.tab = "today"; break;
+    case "stmenu": if (menuFor && menuFor.btn === b) closeMenu(); else openMenu(b); return;
     case "toggle": edit(k, d => setPath(d, b.dataset.path, !getPath(d, b.dataset.path))); break;
     case "add": {
       edit(k, d => { let arr = getPath(d, b.dataset.path); if (!Array.isArray(arr)) { arr = []; setPath(d, b.dataset.path, arr); } arr.push(b.dataset.check === "1" ? { t: "", done: false } : ""); });
       render();
-      const last = [...main.querySelectorAll(`input[type=text][data-doc="${k}"][data-path^="${b.dataset.path}."]`)].pop(); last && last.focus();
+      const last = [...main.querySelectorAll(`textarea.txt[data-doc="${k}"][data-path^="${b.dataset.path}."]`)].pop(); last && last.focus();
       return;
     }
     case "del": edit(k, d => getPath(d, b.dataset.path).splice(Number(b.dataset.i), 1)); break;
@@ -280,6 +345,10 @@ document.addEventListener("visibilitychange", () => {
   if (now !== lastSeen) { if (ymd(S.date) === lastSeen) S.date = new Date(); lastSeen = now; softRender(); }
 });
 
+function backfill() {
+  const ws = Object.keys(S.cache).filter(k => /^[dwq]-/.test(k) && !S.dirty.has(k)).map(k => boardWrite(k, S.cache[k])).filter(Boolean);
+  if (ws.length) Promise.all(ws).catch(() => { });
+}
 function start() {
   S.uid = "planner";
   $("#tabs").hidden = false;
@@ -296,7 +365,7 @@ function start() {
       if (ch.type === "removed") delete S.cache[id]; else S.cache[id] = clone(ch.doc.data());
       touched = true;
     });
-    if (!S.loaded) { S.loaded = true; setStatus(snap.metadata.fromCache ? "Offline · showing saved copy" : "Synced"); }
+    if (!S.loaded) { S.loaded = true; setTimeout(backfill, 2500); setStatus(snap.metadata.fromCache ? "Offline · showing saved copy" : "Synced"); }
     if (touched) softRender();
   }, e => {
     setStatus(e && e.code === "permission-denied" ? "The database blocked this. Check the Firestore rules." : "Lost connection. Reload to resync.", true);

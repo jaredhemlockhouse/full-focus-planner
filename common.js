@@ -18,6 +18,8 @@ export const qLabel = d => {
   return { name: `Q${q} ${d.getFullYear()}`, range: `${fmt(s, { month: "short", day: "numeric" })} – ${fmt(e, { month: "short", day: "numeric" })}`, start: s, end: e };
 };
 export const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+export const hourLabel = h => h === 12 ? "12 PM" : h > 12 ? `${h - 12} PM` : `${h} AM`;
+const STATUS_LABEL = { "": "Open", done: "Done", wait: "Waiting", deleg: "Delegated", defer: "Deferred", del: "Dropped" };
 export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function glanceDays(src, sel, act, highlight) {
@@ -36,8 +38,12 @@ export function viewDashboard(board, d, { ownerName = "Jared", preview = false }
   const bk = k => board[k] || {};
   const day = bk(K.day(d)), wk = bk(K.week(d)), q = bk(K.q(d)), ql = qLabel(d);
   const items = (arr, empty) => (arr && arr.length)
-    ? arr.map((x, i) => `<div class="item"><span class="n">${i + 1}</span><span class="t">${esc(x.t)}</span><span class="pill ${x.done ? "done" : ""}">${x.done ? "Done" : "Open"}</span></div>`).join("")
+    ? arr.map((x, i) => {
+      const st = x.s || (x.done ? "done" : ""), lab = STATUS_LABEL[st] || "Open";
+      return `<div class="item"><span class="n">${i + 1}</span><span class="t ${st === "del" ? "struck" : ""}">${esc(x.t)}${st === "deleg" && x.who ? `<small>Delegated to ${esc(x.who)}</small>` : ""}</span><span class="pill ${st}">${lab}</span></div>`;
+    }).join("")
     : `<p class="muted">${empty}</p>`;
+  const sched = day.sched || [];
   const ups = [day.updated, wk.updated, q.updated].filter(Boolean).sort();
   const last = ups.length ? new Date(ups[ups.length - 1]) : null;
   return `${preview ? `<div class="note"><b>This is the owner view.</b> Owners open the site's main link and see only this page, with no sign-in: Daily Big 3, Weekly Big 3 and quarterly goal progress. It updates live as you plan. Tasks, schedule, notes, rituals and anything marked Private never leave your planner.</div>` : ""}
@@ -53,7 +59,8 @@ export function viewDashboard(board, d, { ownerName = "Jared", preview = false }
     </div>
     <div class="dash">
       <div class="card"><h3>Big 3 for the day <span>${fmt(d, { month: "short", day: "numeric" })}</span></h3>${items(day.big3, "No Big 3 shared for this day.")}</div>
-      <div class="card"><h3>Big 3 for the week <span>${weekLabel(d)}</span></h3>${items(wk.big3, "No weekly Big 3 shared for this week.")}</div>
+      <div class="card"><h3>Schedule <span>${fmt(d, { month: "short", day: "numeric" })}</span></h3>${sched.length ? sched.map(x => `<div class="srow"><span class="tm">${hourLabel(x.h)}</span><span class="ev">${esc(x.t)}</span></div>`).join("") : `<p class="muted">Nothing on the schedule for this day.</p>`}</div>
+      <div class="card wide"><h3>Big 3 for the week <span>${weekLabel(d)}</span></h3>${items(wk.big3, "No weekly Big 3 shared for this week.")}</div>
       <div class="card wide"><h3>Week at a glance <span>Daily Big 3 completed</span></h3>${glanceDays(bk, d, "dashday", true)}</div>
       <div class="card wide"><h3>Quarterly goals <span>${ql.name} · ${ql.range}</span></h3>
         ${(q.goals && q.goals.length) ? q.goals.map(g => `<div class="gl"><div class="r"><b>${esc(g.title)}</b><span>${g.progress || 0}%</span></div><div class="bar"><i style="width:${Math.max(0, Math.min(100, g.progress || 0))}%"></i></div><small>${g.type === "habit" ? "Habit" : "Achievement"}${g.due ? ` · due ${fmt(parseYmd(g.due), { month: "short", day: "numeric" })}` : ""}</small></div>`).join("") : `<p class="muted">No quarterly goals shared for ${ql.name}.</p>`}
