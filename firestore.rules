@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Owners' page data (Big 3s and goal progress).
+    match /board/{docId} {
+      allow read, write: if true;
+    }
+
+    // Your full planner.
+    match /p/main/planner/{docId} {
+      allow read, write: if true;
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

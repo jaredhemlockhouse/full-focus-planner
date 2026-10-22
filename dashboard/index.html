@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jared's Focus</title>
+<meta name="description" content="What Jared is focused on today, this week and this quarter.">
+<meta name="theme-color" content="#2C4A7A">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="../icons/owners-192.png">
+<link rel="apple-touch-icon" href="../icons/owners-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Jared's Focus">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400;1,6..72,500&family=Figtree:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../app.css">
+</head>
+<body class="dash-page">
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><b>Full Focus</b><span>Jared's plan</span></div>
+    <div class="status" id="status" aria-live="polite">Loading…</div>
+  </header>
+  <main id="main"></main>
+</div>
+<script type="module">
+import { db, configured, setupScreen } from "../firebase.js";
+import { OWNER_NAME } from "../config.js";
+import { viewDashboard, dashNav } from "../common.js";
+import { collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const main = document.getElementById("main"), status = document.getElementById("status");
+const board = {}; let date = new Date();
+const render = () => { main.innerHTML = viewDashboard(board, date, { ownerName: OWNER_NAME }); };
+
+if (!configured) { main.innerHTML = setupScreen(); status.textContent = ""; }
+else {
+  render();
+  onSnapshot(collection(db, "board"), snap => {
+    snap.docChanges().forEach(ch => { if (ch.type === "removed") delete board[ch.doc.id]; else board[ch.doc.id] = ch.doc.data(); });
+    status.textContent = snap.metadata.fromCache ? "Offline · showing saved copy" : "Live";
+    render();
+  }, () => { status.textContent = "Couldn't load. Check your connection."; });
+  ["click", "change"].forEach(t => main.addEventListener(t, e => { const d = dashNav(e, date); if (d) { date = d; render(); } }));
+  // Roll over to the new day if the page is left open overnight.
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") render(); });
+}
+</script>
+</body>
+</html>

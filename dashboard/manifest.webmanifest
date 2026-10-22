@@ -1,0 +1,13 @@
+{
+  "name": "Jared's Focus",
+  "short_name": "Jared's Focus",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ECEEF1",
+  "theme_color": "#2C4A7A",
+  "icons": [
+    { "src": "../icons/owners-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "../icons/owners-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

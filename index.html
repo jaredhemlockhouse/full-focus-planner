@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Focus Planner</title>
+<meta name="theme-color" content="#2C4A7A">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/planner-192.png">
+<link rel="apple-touch-icon" href="icons/planner-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Focus Planner">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400;1,6..72,500&family=Figtree:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><b>Full Focus</b><span>Planner</span></div>
+    <nav class="tabs" id="tabs" aria-label="Planner sections" hidden>
+      <button data-tab="today">Today</button>
+      <button data-tab="week">Week</button>
+      <button data-tab="quarter">Quarter</button>
+      <button data-tab="rituals">Rituals</button>
+    </nav>
+    <div class="right"><div class="status" id="status" aria-live="polite"></div></div>
+  </header>
+  <div id="banner"></div>
+  <main id="main"></main>
+</div>
+<script type="module" src="planner.js"></script>
+</body>
+</html>
