@@ -254,3 +254,5 @@ textarea.gt:focus{border-color:var(--accent)}
 .srow .ev{flex:1;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}
 .weekstrip .wi{min-width:0;overflow-wrap:anywhere}
 .item .t{white-space:pre-wrap}
+
+.card .notes{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}

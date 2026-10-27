@@ -1,5 +1,5 @@
 import { db, configured, setupScreen } from "./firebase.js";
-import { ymd, parseYmd, addDays, weekStart, qOf, K, fmt, sameDay, weekLabel, qLabel, esc, DAYS, glanceDays } from "./common.js?v=3";
+import { ymd, parseYmd, addDays, weekStart, qOf, K, fmt, sameDay, weekLabel, qLabel, esc, DAYS, glanceDays } from "./common.js?v=4";
 import { collection, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const S = { uid: null, key: null, cache: {}, board: {}, dirty: new Set(), timers: {}, tab: "today", date: new Date(), armed: null, pendingRender: false, unsubs: [] };
@@ -57,7 +57,12 @@ function project(k, d) {
     });
     if (k.startsWith("w-")) return { big3 };
     const sched = Object.entries(d.sched || {}).filter(([h, t]) => t && String(t).trim()).map(([h, t]) => ({ h: Number(h), t: String(t).trim() })).sort((a, b) => a.h - b.h);
-    return { big3, sched };
+    const tasks = (d.tasks || []).filter(x => x.t && x.t.trim()).map(x => {
+      const o = { t: x.t.trim(), s: stOf(x), done: stOf(x) === "done" };
+      if (o.s === "deleg" && x.who && x.who.trim()) o.who = x.who.trim();
+      return o;
+    });
+    return { big3, sched, tasks, notes: (d.notes || "").trim() };
   }
   if (k.startsWith("q-")) return { goals: (d.goals || []).filter(g => g.title && g.title.trim() && !g.priv).map(g => ({ title: g.title.trim(), type: g.type || "achievement", due: g.due || "", progress: Number(g.progress) || 0 })) };
   return null;
@@ -66,7 +71,7 @@ function project(k, d) {
 function boardWrite(k, data) {
   const p = project(k, data); if (!p) return null;
   const cur = S.board[k]; const curP = cur ? (({ updated, ...r }) => r)(cur) : null;
-  const empty = p.goals ? !p.goals.length : (!p.big3.length && !(p.sched || []).length);
+  const empty = p.goals ? !p.goals.length : (!p.big3.length && !(p.sched || []).length && !(p.tasks || []).length && !p.notes);
   if (empty && !cur) return null;
   if (JSON.stringify(curP) === JSON.stringify(p)) return null;
   const body = { ...p, updated: new Date().toISOString() };
@@ -144,11 +149,11 @@ function viewToday() {
         <div><h2>Daily Big 3 <span class="tag">Owners see these</span></h2>
           <p class="hint">The three outcomes that would make today a win. Mark one Private to keep it off the owners' page.</p>
           ${(day.big3 || blank3()).map((it, i) => bigRow(k, "big3", it, i)).join("")}</div>
-        <div><h2>Other Tasks</h2>${listRows(k, "tasks", day.tasks || [], { check: true, ph: "Task" })}</div>
+        <div><h2>Other Tasks <span class="tag">Owners see these</span></h2>${listRows(k, "tasks", day.tasks || [], { check: true, ph: "Task" })}</div>
         <div><h2>Daily Rituals</h2><div class="chips">
           ${RITUAL_NAMES.map(([id, n]) => `<label class="chip"><input class="chk" type="checkbox" data-doc="${k}" data-path="rit.${id}" ${day.rit && day.rit[id] ? "checked" : ""}>${n}</label>`).join("")}
         </div></div>
-        <div><h2>Notes</h2><textarea rows="6" placeholder="Ideas, calls, follow-ups…" data-doc="${k}" data-path="notes">${esc(day.notes)}</textarea></div>
+        <div><h2>Notes <span class="tag">Owners see these</span></h2><textarea rows="6" placeholder="Ideas, calls, follow-ups…" data-doc="${k}" data-path="notes">${esc(day.notes)}</textarea></div>
       </div>
       <div class="stack sched"><div><h2>Schedule</h2>
         ${hours.map(h => `<div class="line"><span class="time">${hourLabel(h)}</span><div class="cell">${txt(k, `sched.${h}`, (day.sched || {})[h], "")}</div></div>`).join("")}

@@ -37,10 +37,10 @@ export function glanceDays(src, sel, act, highlight) {
 export function viewDashboard(board, d, { ownerName = "Jared", preview = false } = {}) {
   const bk = k => board[k] || {};
   const day = bk(K.day(d)), wk = bk(K.week(d)), q = bk(K.q(d)), ql = qLabel(d);
-  const items = (arr, empty) => (arr && arr.length)
+  const items = (arr, empty, plain) => (arr && arr.length)
     ? arr.map((x, i) => {
       const st = x.s || (x.done ? "done" : ""), lab = STATUS_LABEL[st] || "Open";
-      return `<div class="item"><span class="n">${i + 1}</span><span class="t ${st === "del" ? "struck" : ""}">${esc(x.t)}${st === "deleg" && x.who ? `<small>Delegated to ${esc(x.who)}</small>` : ""}</span><span class="pill ${st}">${lab}</span></div>`;
+      return `<div class="item">${plain ? "" : `<span class="n">${i + 1}</span>`}<span class="t ${st === "del" ? "struck" : ""}">${esc(x.t)}${st === "deleg" && x.who ? `<small>Delegated to ${esc(x.who)}</small>` : ""}</span><span class="pill ${st}">${lab}</span></div>`;
     }).join("")
     : `<p class="muted">${empty}</p>`;
   const sched = day.sched || [];
@@ -60,6 +60,8 @@ export function viewDashboard(board, d, { ownerName = "Jared", preview = false }
     <div class="dash">
       <div class="card"><h3>Big 3 for the day <span>${fmt(d, { month: "short", day: "numeric" })}</span></h3>${items(day.big3, "No Big 3 shared for this day.")}</div>
       <div class="card"><h3>Schedule <span>${fmt(d, { month: "short", day: "numeric" })}</span></h3>${sched.length ? sched.map(x => `<div class="srow"><span class="tm">${hourLabel(x.h)}</span><span class="ev">${esc(x.t)}</span></div>`).join("") : `<p class="muted">Nothing on the schedule for this day.</p>`}</div>
+      <div class="card"><h3>Other tasks <span>${fmt(d, { month: "short", day: "numeric" })}</span></h3>${(day.tasks || []).length ? items(day.tasks, "", true) : `<p class="muted">No other tasks for this day.</p>`}</div>
+      <div class="card"><h3>Notes <span>${fmt(d, { month: "short", day: "numeric" })}</span></h3>${day.notes ? `<p class="notes">${esc(day.notes)}</p>` : `<p class="muted">No notes for this day.</p>`}</div>
       <div class="card wide"><h3>Big 3 for the week <span>${weekLabel(d)}</span></h3>${items(wk.big3, "No weekly Big 3 shared for this week.")}</div>
       <div class="card wide"><h3>Week at a glance <span>Daily Big 3 completed</span></h3>${glanceDays(bk, d, "dashday", true)}</div>
       <div class="card wide"><h3>Quarterly goals <span>${ql.name} · ${ql.range}</span></h3>
